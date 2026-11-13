@@ -83,15 +83,16 @@ describe('botão Atualizar no app (notas preservadas)', () => {
     localStorage.setItem('copa-america-atributos-v1', JSON.stringify({ 'Argentina:FRITZ': { KDA: 50 } }))
     const next = clone()
     next.updatedAt = '2032-03-03T12:30:00.000Z'
-    // mudança nos dados: FRITZ ganha mais partidas
+    // mudança nos dados: o rank do FRITZ sobe (a carta dele NÃO muda, só o rank mostrado)
     const fritz = next.players.find((p) => p.team === 'Argentina' && p.nick === 'FRITZ')
-    fritz.stats.games += 100
+    fritz.badge = 113
     vi.stubGlobal('fetch', okFetch(next))
     render(<App />)
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Dados atualizados'))
     expect(screen.getByText(/Dados de/)).toHaveTextContent(/2032|03\/03/)
     // dados novos na tela
-    expect(screen.getByText(String(fritz.stats.games))).toBeInTheDocument()
+    expect(screen.getAllByText('Eternus 3').length).toBeGreaterThan(0)
+    expect(screen.getByLabelText('Atributo IMP')).toHaveValue(null) // atributos continuam zerados: a carta é só sua
     // notas e atributos continuam
     expect(screen.getByLabelText('SUA NOTA')).toHaveValue(77)
     expect(screen.getByLabelText('Atributo KDA')).toHaveValue(50)

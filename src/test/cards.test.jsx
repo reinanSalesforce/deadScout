@@ -3,44 +3,38 @@ import { act, fireEvent, render, renderHook, screen, within } from '@testing-lib
 import userEvent from '@testing-library/user-event'
 import App from '../App'
 import { useAttrs } from '../useAttrs'
-import { ATTRS, attrValues, baseAttrs, ovrOf, players } from '../lib'
+import { GAME_ATTRS } from '../matches'
+import { ATTRS, attrValues, ovrOf, players } from '../lib'
 
 const KEY = 'copa-america-atributos-v1'
-const withStats = players.filter((p) => p.stats && p.wins != null)
 
 describe('atributos da carta (lib)', () => {
-  it('são 6 atributos e os pesos somam 100%', () => {
-    expect(ATTRS.map((a) => a.k)).toEqual(['KDA', 'DMG', 'SOU', 'AIM', 'OBJ', 'WIN'])
+  it('são os mesmos 6 atributos da carta do torneio e os pesos somam 100%', () => {
+    expect(ATTRS.map((a) => a.k)).toEqual(['KDA', 'DMG', 'SOU', 'OBJ', 'FRM', 'IMP'])
+    expect(ATTRS.map((a) => a.k)).toEqual(GAME_ATTRS.map((a) => a.k))
+    expect(ATTRS.map((a) => a.w)).toEqual(GAME_ATTRS.map((a) => a.w)) // mesmo peso: a nota geral é comparável
     expect(ATTRS.reduce((s, a) => s + a.w, 0)).toBeCloseTo(1)
   })
 
-  it('notas calculadas ficam entre 45 e 99 para todo jogador com stats', () => {
-    for (const p of withStats) {
-      const b = baseAttrs(p)
-      for (const a of ATTRS) {
-        expect(b[a.k], `${p.team}:${p.nick} ${a.k}`).toBeGreaterThanOrEqual(45)
-        expect(b[a.k], `${p.team}:${p.nick} ${a.k}`).toBeLessThanOrEqual(99)
-      }
+  it('a carta começa ZERADA para todo jogador: nenhum valor vem dos dados', () => {
+    for (const p of players) {
+      const v = attrValues(p)
+      expect(Object.values(v).every((x) => x === null), `${p.team}:${p.nick}`).toBe(true)
+      expect(ovrOf(v)).toBeNull()
     }
   })
 
-  it('jogador sem stats não tem atributos calculados e nota geral nula', () => {
-    const p = players.find((x) => !x.stats)
-    expect(baseAttrs(p)).toEqual({})
-    expect(ovrOf(attrValues(p))).toBeNull()
-  })
-
-  it('edição do usuário tem prioridade sobre o calculado', () => {
-    const p = withStats[0]
-    expect(attrValues(p, { KDA: 12 }).KDA).toBe(12)
-    expect(attrValues(p, {}).KDA).toBe(baseAttrs(p).KDA)
+  it('só o que a pessoa digitou aparece, e os dados do site nunca mudam a carta', () => {
+    const p = players.find((x) => x.found)
+    expect(attrValues(p, { DMG: 12 })).toEqual({ KDA: null, DMG: 12, SOU: null, OBJ: null, FRM: null, IMP: null })
+    expect(attrValues({ ...p, stats: { games: 999 }, mvp: { score: 99 } }, { DMG: 12 })).toEqual(attrValues(p, { DMG: 12 }))
   })
 
   it('nota geral é a média ponderada e renormaliza quando faltam atributos', () => {
-    const all = { KDA: 100, DMG: 100, SOU: 100, AIM: 100, OBJ: 100, WIN: 100 }
+    const all = { KDA: 100, DMG: 100, SOU: 100, OBJ: 100, FRM: 100, IMP: 100 }
     expect(ovrOf(all)).toBe(100)
     expect(ovrOf({ ...all, KDA: 50 })).toBe(90) // 100 - 0.2*50
-    expect(ovrOf({ KDA: 80, DMG: null, SOU: null, AIM: null, OBJ: null, WIN: 60 })).toBe(70)
+    expect(ovrOf({ KDA: 80, DMG: 60, SOU: null, OBJ: null, FRM: null, IMP: null })).toBe(70)
   })
 })
 
@@ -68,30 +62,35 @@ describe('useAttrs (autosave)', () => {
 describe('carta na tela', () => {
   const card = () => screen.getByRole('article', { name: /Carta de/ })
 
-  it('mostra nota geral, 6 atributos e herói principal', () => {
+  it('a cartinha começa vazia e sem herói: atributos sem valor, nota geral em branco, foto do jogador no fundo e nenhuma pool', () => {
     render(<App />)
     const c = within(card())
-    for (const a of ATTRS) expect(c.getByLabelText(`Atributo ${a.k}`)).toBeInTheDocument()
+    for (const a of ATTRS) expect(c.getByLabelText('Atributo ' + a.k)).toHaveValue(null)
     expect(c.getByRole('heading', { level: 2 })).toHaveTextContent('FRITZ')
-    expect(c.getByText(/^shiv$/i)).toBeInTheDocument()
+    expect(c.queryByText(/^shiv$/i)).not.toBeInTheDocument() // sem nome de herói antes dos jogos
+    expect(c.queryByRole('list', { name: 'Pool de heróis' })).not.toBeInTheDocument()
+    expect(card().querySelector('[data-role]')).toBeNull() // a função vem do herói jogado na Copa
+    expect(c.getByText('–')).toBeInTheDocument() // nota geral em branco
+    const fritz = players.find((p) => p.team === 'Argentina' && p.nick === 'FRITZ')
+    expect(card().querySelector('img[data-photo]')).toHaveAttribute('src', fritz.avatar) // foto do jogador atrás
+    expect(c.queryByRole('img', { name: 'FRITZ' })).not.toBeInTheDocument() // sem a bolinha pequena
   })
 
-  it('editar um atributo muda a nota geral, persiste e permite restaurar', async () => {
+  it('o que a pessoa digita vira a carta, gera a nota geral, persiste e pode ser limpo', async () => {
     const user = userEvent.setup()
     render(<App />)
     const c = within(card())
-    const field = c.getByLabelText('Atributo KDA')
-    const before = Number(field.value)
-    await user.clear(field)
-    await user.type(field, '99')
-    expect(field).toHaveValue(99)
-    expect(JSON.parse(localStorage.getItem(KEY))['Argentina:FRITZ']).toEqual({ KDA: 99 })
-    await user.click(c.getByText('restaurar calculados'))
-    expect(c.getByLabelText('Atributo KDA')).toHaveValue(before)
+    await user.type(c.getByLabelText('Atributo KDA'), '80')
+    await user.type(c.getByLabelText('Atributo DMG'), '60')
+    expect(c.getByLabelText('Atributo KDA')).toHaveValue(80)
+    expect(JSON.parse(localStorage.getItem(KEY))['Argentina:FRITZ']).toEqual({ KDA: 80, DMG: 60 })
+    expect(c.getByText('70')).toBeInTheDocument() // (80*0,2 + 60*0,2) / 0,4
+    await user.click(c.getByText('limpar atributos'))
+    expect(c.getByLabelText('Atributo KDA')).toHaveValue(null)
     expect(localStorage.getItem(KEY)).toBe('{}')
   })
 
-  it('jogador sem stats mostra campos vazios e aceita edição', async () => {
+  it('jogador sem tracker também começa vazio e aceita edição', async () => {
     const user = userEvent.setup()
     render(<App />)
     await user.click(within(document.querySelector('.fixed')).getByRole('button', { name: /DAMAGE13/i }))
@@ -101,10 +100,8 @@ describe('carta na tela', () => {
     expect(c.getByLabelText('Atributo KDA')).toHaveValue(70)
   })
 
-  it('usa a arte oficial do herói e a cor dele no brilho', () => {
+  it('a cor do brilho vem da faixa da nota, não de um herói', () => {
     render(<App />)
-    const art = card().querySelector('img[aria-hidden="true"]')
-    expect(art).toHaveAttribute('src', expect.stringContaining('deadlock-api.com'))
     expect(card().style.getPropertyValue('--hero')).toMatch(/^#[0-9a-f]{6}$/i)
   })
 
@@ -133,6 +130,6 @@ describe('carta na tela', () => {
     await user.click(screen.getByRole('tab', { name: /Comparar/i }))
     await user.click(screen.getByText('MACHINE'))
     const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByLabelText('Atributo AIM')).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Atributo KDA')).toBeInTheDocument()
   })
 })

@@ -2,6 +2,15 @@
 import { players as datasetPlayers } from './lib'
 
 // vincula o jogador da partida ao cadastro do site (por seleção + nick; ou pela conta Steam)
+// imagens de um herói pelo nome, a partir de qualquer jogador do cadastro que o tenha jogado (plano B quando o jogo não traz a imagem)
+export const heroAsset = (name) => {
+  for (const p of datasetPlayers) {
+    const h = (p.heroes ?? []).find((x) => x.name === name)
+    if (h) return h
+  }
+  return undefined
+}
+
 export const findDatasetPlayer = (p) => {
   const nation = p.nation ?? p.teamNation
   return (
@@ -122,6 +131,109 @@ export function playerSummary(games) {
   return [...map.values()]
     .map((s) => ({ ...s, avg: Math.round(s.sum / s.games) }))
     .sort((a, b) => b.avg - a.avg || b.games - a.games)
+}
+
+// ---------------------------------------------------------------------------
+// "Minha nota x Jogos": compara a nota que a pessoa deu (0-100) com a nota que cada jogo do jogador gerou.
+// Escala justa: as notas dos jogos vão de 45 a 99 (posição entre os 12 jogadores). Uma nota sua abaixo de 45
+// vale 45 na comparação ("pior que quase todos"), em vez de nunca poder bater.
+export const GAME_SCALE_MIN = 45
+export const MATCH_TOLERANCE = 10
+export const onGameScale = (grade) => Math.min(99, Math.max(GAME_SCALE_MIN, grade))
+
+// Carreira NA COPA de um jogador: só os jogos do torneio (média, frag, heróis e lista dos jogos, do mais recente para o mais antigo).
+// Devolve null se ele ainda não jogou.
+export function copaCareer(games, player, key) {
+  const list = []
+  for (const g of games ?? []) {
+    for (const p of rateGame(g)) {
+      const found = findDatasetPlayer(p)
+      if (!found || key(found) !== key(player)) continue
+      const nation = p.nation ?? p.teamNation
+      list.push({ g, p, nation, win: g.winner === nation, opp: nation === g.natA ? g.natB : g.natA })
+    }
+  }
+  if (!list.length) return null
+  list.sort((a, b) => (b.g.start ?? 0) - (a.g.start ?? 0) || (b.g.gameNo ?? 0) - (a.g.gameNo ?? 0))
+  const n = list.length
+  const sum = (f) => list.reduce((s, x) => s + f(x), 0)
+  const [K, D, A] = [sum((x) => x.p.k), sum((x) => x.p.d), sum((x) => x.p.a)]
+  const wins = list.filter((x) => x.win).length
+  const values = {}
+  for (const a of GAME_ATTRS) {
+    const v = list.map((x) => x.p.values[a.k]).filter((x) => x != null)
+    values[a.k] = v.length ? Math.round(v.reduce((s, x) => s + x, 0) / v.length) : null
+  }
+  const byHero = new Map()
+  for (const x of list) {
+    const owned = (player.heroes ?? []).find((o) => o.name === x.p.hero) ?? heroAsset(x.p.hero) // plano B das imagens: cadastro do jogador ou de qualquer outro
+    const h = byHero.get(x.p.hero) ?? { name: x.p.hero, games: 0, wins: 0, k: 0, d: 0, a: 0, art: heroImg(x.p, 'vertical') ?? owned?.art, icon: heroImg(x.p, 'sm') ?? owned?.icon, color: x.p.color ?? owned?.color }
+    h.games += 1
+    h.wins += x.win ? 1 : 0
+    h.k += x.p.k
+    h.d += x.p.d
+    h.a += x.p.a
+    byHero.set(x.p.hero, h)
+  }
+  for (const x of list) {
+    const h = byHero.get(x.p.hero)
+    x.art = h.art
+    x.icon = h.icon
+  }
+  return {
+    list,
+    games: n,
+    wins,
+    winRate: (wins / n) * 100,
+    kills: K / n,
+    deaths: D / n,
+    assists: A / n,
+    kda: (K + A) / Math.max(1, D),
+    souls: sum((x) => x.p.souls) / n,
+    heroDmg: sum((x) => x.p.dmg) / n,
+    objDmg: sum((x) => x.p.bossDmg) / n,
+    ovr: Math.round(sum((x) => x.p.ovr) / n),
+    mvps: list.filter((x) => x.p.isMvp).length,
+    bestKills: Math.max(...list.map((x) => x.p.k)),
+    bestKda: Math.max(...list.map((x) => (x.p.k + x.p.a) / Math.max(1, x.p.d))),
+    values,
+    heroes: [...byHero.values()].map((h) => ({ ...h, winRate: (h.wins / h.games) * 100, kda: (h.k + h.a) / Math.max(1, h.d) })).sort((a, b) => b.games - a.games),
+  }
+}
+
+// veredito: 'bateu' (até 10 pontos), 'pior' (você deu menos que o jogo) ou 'melhor' (você deu mais)
+export const verdictOf = (gameOvr, grade) => {
+  if (grade == null || gameOvr == null) return null
+  const diff = gameOvr - onGameScale(grade)
+  return Math.abs(diff) <= MATCH_TOLERANCE ? 'bateu' : diff > 0 ? 'pior' : 'melhor'
+}
+
+export function gradeVsGames(games, player, key, grade) {
+  const rows = []
+  for (const g of games ?? []) {
+    for (const p of rateGame(g)) {
+      const found = findDatasetPlayer(p)
+      if (!found || key(found) !== key(player)) continue
+      const diff = grade == null ? null : p.ovr - onGameScale(grade)
+      rows.push({
+        id: g.id,
+        title: `${g.natA || 'Time A'} x ${g.natB || 'Time B'}`,
+        stage: g.stage,
+        gameNo: g.gameNo,
+        start: g.start,
+        hero: p.hero,
+        p, // jogador do jogo já com notas (para a carta do jogo)
+        ovr: p.ovr,
+        isMvp: p.isMvp,
+        diff,
+        verdict: verdictOf(p.ovr, grade),
+      })
+    }
+  }
+  rows.sort((a, b) => (a.start ?? 0) - (b.start ?? 0) || (a.gameNo ?? 0) - (b.gameNo ?? 0))
+  const avg = rows.length ? Math.round(rows.reduce((s, r) => s + r.ovr, 0) / rows.length) : null
+  const hits = rows.filter((r) => r.verdict === 'bateu').length
+  return { rows, avg, hits }
 }
 
 // O nome interno do herói no site do torneio nem sempre é o do arquivo da imagem (ex.: Lady Geist = "ghost", mas a imagem é "spectre").
