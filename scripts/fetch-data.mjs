@@ -34,7 +34,7 @@ async function loadEdlTeams() {
   try {
     const res = await fetch('https://edl.gg/api/owned/teams?time=all&preload=true&includeFacets=false&contract=final-tables-v1', { headers: HEADERS })
     const rows = res.ok ? (await res.json()).rows : []
-    for (let i = 0; i < rows.length; i += 5) {
+    for (let i = 0; i < rows.length; i += 3) {
       await Promise.all(
         rows.slice(i, i + 5).map(async (row) => {
           try {
@@ -79,13 +79,13 @@ console.log('Times EDL:', Object.keys(TEAMS).filter((k) => TEAMS[k].group === 'E
 const ALIAS = { AVG: 'C9 Average', SAIAH: 'C9 Saiah', JONJON: 'C9 JonJon', BACALHAU: 'Bacas' }
 
 const get = async (path) => {
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 5; i++) {
     try {
       const r = await fetch(BASE + path, { headers: HEADERS })
       if (r.status === 404) return null
       if (r.ok) return await r.json()
     } catch {}
-    await new Promise((r) => setTimeout(r, 500))
+    await new Promise((r) => setTimeout(r, 500 * (i + 1) ** 2)) // espera cada vez mais (limite de requisições da API)
   }
   return null
 }
@@ -207,9 +207,9 @@ async function build(team, entry) {
 
 const jobs = Object.entries(TEAMS).flatMap(([team, t]) => t.players.map((p) => [team, p]))
 const players = []
-for (let i = 0; i < jobs.length; i += 10) {
-  players.push(...(await Promise.all(jobs.slice(i, i + 10).map(([t, p]) => build(t, p)))))
-  console.log(`${Math.min(i + 10, jobs.length)}/${jobs.length}`)
+for (let i = 0; i < jobs.length; i += 6) {
+  players.push(...(await Promise.all(jobs.slice(i, i + 6).map(([t, p]) => build(t, p)))))
+  console.log(`${Math.min(i + 6, jobs.length)}/${jobs.length}`)
 }
 
 // ---- EDL.GG: cenário competitivo (prêmios, títulos, MVPs, séries). API JSON usada pelo próprio site.

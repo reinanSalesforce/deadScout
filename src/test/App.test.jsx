@@ -147,7 +147,8 @@ describe('modo comparar', () => {
     expect(dialog).toBeInTheDocument()
     expect(within(dialog).getByLabelText('SUA NOTA')).toHaveValue(88)
     expect(within(dialog).getByText(/ABRIR TRACKER/)).toBeInTheDocument()
-    expect(within(dialog).getByText(/ÚLTIMAS PARTIDAS/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/VER CARREIRA NO TRACKER/)).toBeInTheDocument()
+    expect(within(dialog).getAllByText(/Ainda sem jogo da Copa/).length).toBeGreaterThan(0)
   })
 
   it('pop-up: Esc fecha e continua no comparativo; nota do pop-up reflete na linha', async () => {
@@ -248,7 +249,7 @@ describe('links externos abrem em outra aba', () => {
     await user.click(screen.getByText('JONJON'))
     const dialog = screen.getByRole('dialog')
     const links = externalLinks(dialog)
-    expect(links.length).toBeGreaterThan(3) // tracker + EDL + partidas
+    expect(links.length).toBeGreaterThanOrEqual(3) // tracker (card) + tracker (carreira) + EDL
     for (const a of links) {
       expect(a, a.href).toHaveAttribute('target', '_blank')
       expect(a.getAttribute('rel')).toContain('noreferrer')

@@ -6,6 +6,9 @@ import { useAttrs } from './useAttrs'
 import TradingCard from './components/TradingCard'
 import GradeInput from './components/GradeInput'
 import Details from './components/Details'
+import { exemploJogos } from './exemploNota'
+import GradeVsGames from './components/GradeVsGames'
+import { MATCH_POLL_MS, useJsonSource } from './useJsonSource'
 import MiniCard from './components/MiniCard'
 import TeamAverage from './components/TeamAverage'
 import CompareView from './components/CompareView'
@@ -22,6 +25,10 @@ export default function App() {
   const attrs = useAttrs()
   const [mode, setMode] = useState('time') // 'time' | 'comparar'
   const live = useLiveData()
+  const liveGames = useJsonSource('matches.json', { enabled: mode === 'time', pollMs: MATCH_POLL_MS })
+  const exemplo = useMemo(() => new URLSearchParams(location.search).has('exemplo'), []) // jogos de mentira para ver as telas antes da Copa
+  // jogos da Copa de um jogador (com ?exemplo: jogos de mentira dele)
+  const gamesOf = (p) => (exemplo ? exemploJogos(p) : liveGames.data?.games)
   const [teamPick, setTeamName] = useState(teams[0].name)
   const [selected, setSelected] = useState(() => firstOf(teams[0].name))
   const [includeSubs, setIncludeSubs] = useState(true)
@@ -120,6 +127,7 @@ export default function App() {
         </div>
       </header>
 
+
       {mode === 'comparar' ? (
         <main className="mt-5">
           <CompareView
@@ -187,11 +195,12 @@ export default function App() {
 
           <main className="mt-3 grid items-start gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
             <div className="grid gap-4 lg:sticky lg:top-4">
-              <TradingCard key={keyOf(current)} player={current} team={team} grade={grades[keyOf(current)]} attrs={attrs} />
+              <TradingCard key={keyOf(current)} player={current} team={team} grade={grades[keyOf(current)]} attrs={attrs} games={gamesOf(current)} />
             </div>
             <div className="grid min-w-0 gap-4">
               <GradeInput value={grades[keyOf(current)]} onChange={(v) => setGrade(keyOf(current), v)} savedAt={savedAt} />
-              <Details key={keyOf(current)} player={current} grade={grades[keyOf(current)]} />
+              <GradeVsGames player={current} team={team} overrides={attrs.overrides[keyOf(current)]} grade={grades[keyOf(current)]} games={gamesOf(current)} onUse={(v) => setGrade(keyOf(current), v)} />
+              <Details key={keyOf(current)} player={current} grade={grades[keyOf(current)]} games={gamesOf(current)} />
             </div>
           </main>
 
@@ -229,6 +238,7 @@ export default function App() {
           grade={grades[keyOf(modalPlayer)]}
           onGrade={(v) => setGrade(keyOf(modalPlayer), v)}
           savedAt={savedAt}
+          games={gamesOf(modalPlayer)}
           onClose={closeModal}
         />
       )}

@@ -84,28 +84,20 @@ export const radarOf = (p) => {
   return AXES.map((a) => ({ label: a.label, value: pct(a, a.get(p), g) }))
 }
 
-// ---- Atributos da carta (estilo FUT): 6 notas de 1 a 99 derivadas dos stats reais, editáveis pelo usuário
+// ---- Atributos da SUA carta (estilo FUT): 6 notas de 1 a 99 que SÓ você preenche. Começam vazias e nunca mudam
+// sozinhas (nem com atualização de dados): é a sua opinião, para ser comparada com a carta que o torneio gerou.
+// São os mesmos 6 atributos da carta do torneio (matches.js: GAME_ATTRS), para a comparação ser um a um.
 export const ATTRS = [
-  { k: 'KDA', desc: 'Abates + assistências por morte', w: 0.2, get: (p) => kdaOf(p.stats) },
-  { k: 'DMG', desc: 'Dano em heróis por jogo', w: 0.2, get: (p) => p.stats.heroDmg },
-  { k: 'SOU', desc: 'Souls por jogo', w: 0.15, get: (p) => p.stats.souls },
-  { k: 'AIM', desc: 'Precisão de tiro', w: 0.15, get: (p) => p.stats.accuracy },
-  { k: 'OBJ', desc: 'Dano em objetivos', w: 0.1, get: (p) => p.stats.objDmg },
-  { k: 'WIN', desc: 'Taxa de vitória em ranked', w: 0.2, get: (p) => (p.wins / Math.max(1, p.wins + p.losses)) * 100 },
+  { k: 'KDA', desc: 'Abates + assistências por morte', w: 0.2 },
+  { k: 'DMG', desc: 'Dano em heróis por minuto', w: 0.2 },
+  { k: 'SOU', desc: 'Souls por minuto', w: 0.15 },
+  { k: 'OBJ', desc: 'Dano em objetivos por minuto', w: 0.1 },
+  { k: 'FRM', desc: 'Last hits + denies por minuto', w: 0.1 },
+  { k: 'IMP', desc: 'Impacto: nota de MVP do Statlocker (0-100)', w: 0.25 },
 ]
 
-// nota calculada: percentil no mesmo grupo mapeado para 45..99; vazio quando não há stats
-export const baseAttrs = (p) => {
-  if (!p.stats || p.wins == null) return {}
-  const g = groupOfTeam(p.team)
-  return Object.fromEntries(ATTRS.map((a) => [a.k, Math.round(45 + pct(a, a.get(p), g) * 54)]))
-}
-
-// valores finais: edição do usuário tem prioridade sobre o calculado
-export const attrValues = (p, overrides = {}) => {
-  const base = baseAttrs(p)
-  return Object.fromEntries(ATTRS.map((a) => [a.k, overrides?.[a.k] ?? base[a.k] ?? null]))
-}
+// valores da carta: só o que a pessoa digitou (vazio = null)
+export const attrValues = (_p, overrides = {}) => Object.fromEntries(ATTRS.map((a) => [a.k, overrides?.[a.k] ?? null]))
 
 // nota geral: média ponderada dos atributos disponíveis (pesos renormalizados)
 export const ovrOf = (values) => {

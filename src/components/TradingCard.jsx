@@ -1,5 +1,9 @@
+import { useRef } from 'react'
 import FutCard from './FutCard'
-import { ATTRS, attrValues, baseAttrs, keyOf, ovrOf, rankOf, tierOf } from '../lib'
+import DownloadButton from './DownloadButton'
+import { roleOf } from '../heroRoles'
+import { ATTRS, attrValues, keyOf, ovrOf, rankOf, tierOf } from '../lib'
+import { copaCareer } from '../matches'
 
 const MATCH = {
   alta: { t: 'Perfil confirmado', c: 'text-pos border-pos/50' },
@@ -7,31 +11,53 @@ const MATCH = {
   baixa: { t: 'Verificar perfil', c: 'text-neg border-neg/50' },
 }
 
+// "O que é cada nota": explica as 6 siglas da carta, para quem não conhece.
+export function Legend({ attrs = ATTRS, title = 'O QUE É CADA NOTA?', note = null }) {
+  return (
+    <details className="mt-2 rounded-sm border border-line bg-panel2 text-left text-[12px]">
+      <summary className="cursor-pointer px-2 py-1 font-bold tracking-wider text-gold2">{title}</summary>
+      <dl className="grid gap-1 px-2 pb-2 text-muted">
+        {attrs.map((a) => (
+          <div key={a.k}>
+            <dt className="inline font-bold text-white/85">{a.k} </dt>
+            <dd className="inline">{a.desc}.</dd>
+          </div>
+        ))}
+        {note && <p className="mt-1">{note}</p>}
+      </dl>
+    </details>
+  )
+}
+
 // Cartinha do jogador (média dos stats ranked, atributos editáveis) + identificação e botão do tracker.
-export default function TradingCard({ player: p, team, grade, attrs }) {
+export default function TradingCard({ player: p, team, grade, attrs, games }) {
+  const root = useRef(null)
+  // o fundo é a foto do jogador; os heróis (pool) e a função só aparecem depois dos jogos da Copa
+  const career = copaCareer(games, p, keyOf)
   const key = keyOf(p)
   const overrides = attrs.overrides[key] ?? {}
-  const base = baseAttrs(p)
   const values = attrValues(p, overrides)
   const ovr = ovrOf(values)
   const rank = rankOf(p.badge)
   const tier = tierOf(ovr)
   const myTier = tierOf(grade)
-  const hero = p.heroes?.[0]
   const edited = Object.keys(overrides).length > 0
 
   return (
-    <div className="mx-auto w-full max-w-[320px]">
+    <div className="mx-auto w-full max-w-[320px]" ref={root}>
       <FutCard
         nick={p.nick}
         ovr={ovr}
         tierColor={tier?.color}
         tierLabel={tier?.label}
+        role={roleOf(career?.heroes[0]?.name)}
         team={team}
         rank={rank}
-        hero={hero ? { name: hero.name, art: hero.card ?? hero.art ?? p.recent?.[0]?.art, color: hero.color } : null}
+        hero={null}
+        photo={p.avatar}
         avatar={p.avatar}
-        attrs={ATTRS.map((a) => ({ k: a.k, desc: a.desc, value: values[a.k], base: base[a.k], edited: overrides[a.k] != null }))}
+        pool={career?.heroes.map((h) => ({ name: h.name, img: h.icon }))}
+        attrs={ATTRS.map((a) => ({ k: a.k, desc: a.desc, value: values[a.k], edited: overrides[a.k] != null }))}
         onAttr={(k, v) => attrs.setAttr(key, k, v)}
         onReset={edited ? () => attrs.resetAttrs(key) : undefined}
         tip={grade != null ? { text: `SUA NOTA ${grade}`, color: myTier?.color } : null}
@@ -69,7 +95,13 @@ export default function TradingCard({ player: p, team, grade, attrs }) {
         {p.found && p.username.toLowerCase() !== p.nick.toLowerCase() && (
           <div className="mt-1 text-xs text-muted">no tracker: {p.username}</div>
         )}
-        <p className="mt-2 text-[11px] text-muted">Atributos de 1 a 99 calculados dos stats reais. Clique num número para editar.</p>
+        <div className="mt-2">
+          <DownloadButton getRoot={() => root.current} name={`carta-${p.nick}`} />
+        </div>
+        <p className="mt-2 text-[11px] text-muted">
+          Esta é a SUA carta: começa vazia e só muda com o que você digitar (de 1 a 99). Clique num número para preencher. Os dados do torneio nunca alteram ela.
+        </p>
+        <Legend title="O QUE É CADA NOTA?" note="Cada nota vai de 1 a 99. A carta do torneio usa estes mesmos 6 atributos, calculados dos jogos da Copa, para você comparar um a um." />
       </div>
     </div>
   )
