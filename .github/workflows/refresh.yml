@@ -1,0 +1,22 @@
+name: Atualizar dados (a cada hora)
+
+# Busca dados novos do DeadChaps e do EDL.gg e republica o site. Nada é commitado: o arquivo
+# players.json do repositório fica como "plano B" e o site publicado sempre tem a coleta mais recente.
+# O site aberto no navegador rebusca esse arquivo sozinho (botão "Atualizar" e a cada 1 hora).
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  republish:
+    uses: ./.github/workflows/deploy.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

@@ -255,3 +255,33 @@ describe('links externos abrem em outra aba', () => {
     }
   })
 })
+
+describe('notas extremas não estouram a interface', () => {
+  it('média 100 aparece como "100" na aba do time e 87.5 com 1 casa', () => {
+    const all = Object.fromEntries(
+      ['DAMAGE13', 'FRITZ', 'MAXI', 'NAVARS', 'NOZWER', 'SKYWALKER', 'LEO'].map((n) => [`Argentina:${n}`, 100]),
+    )
+    localStorage.setItem('copa-america-notas-v1', JSON.stringify({ ...all, 'Brazil:DK': 87.5 }))
+    setup()
+    expect(teamTab('Argentina')).toHaveTextContent(/100$/)
+    expect(teamTab('Brazil')).toHaveTextContent('87.5')
+  })
+
+  it('"SUA NOTA 100" cabe na ponta da carta sem quebrar linha', async () => {
+    const { user } = setup()
+    await user.type(screen.getByLabelText('SUA NOTA'), '100')
+    const tip = screen.getByText('SUA NOTA 100')
+    expect(tip.className).toMatch(/whitespace-nowrap/)
+    expect(tip.className).toMatch(/truncate/)
+  })
+})
+
+describe('identidade do site', () => {
+  it('título Deadlock Scout no cabeçalho e no rodapé (sem afiliação com a Valve nem com o Deadlock Premier)', () => {
+    setup()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('DEADLOCK SCOUT')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('CARTAS · NOTAS · CONFRONTOS')
+    expect(screen.queryByText(/DEADLOCK PREMIER/)).not.toBeInTheDocument() // o nome do site oficial do torneio não é usado como título
+    expect(screen.getByText(/Deadlock Scout é um projeto de fã/)).toHaveTextContent(/sem afiliação com a Valve nem com o Deadlock Premier/)
+  })
+})

@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { teams, players, keyOf, updatedAt, tierOf, rosterOf, teamStats, GROUPS, teamsOf, groupOfTeam } from './lib'
+import { useLiveData, REFRESH_MS } from './useLiveData'
 import { useGrades } from './useGrades'
+import { useAttrs } from './useAttrs'
 import TradingCard from './components/TradingCard'
 import GradeInput from './components/GradeInput'
 import Details from './components/Details'
 import MiniCard from './components/MiniCard'
 import TeamAverage from './components/TeamAverage'
 import CompareView from './components/CompareView'
+import MatchesView from './components/MatchesView'
 import PlayerModal from './components/PlayerModal'
 
 const firstOf = (name) => {
@@ -16,15 +19,20 @@ const firstOf = (name) => {
 
 export default function App() {
   const { grades, setGrade, clearAll, savedAt } = useGrades()
+  const attrs = useAttrs()
   const [mode, setMode] = useState('time') // 'time' | 'comparar'
-  const [teamName, setTeamName] = useState(teams[0].name)
+  const live = useLiveData()
+  const [teamPick, setTeamName] = useState(teams[0].name)
   const [selected, setSelected] = useState(() => firstOf(teams[0].name))
   const [includeSubs, setIncludeSubs] = useState(true)
   const [modalKey, setModalKey] = useState(null)
 
+  // se a atualização remover o time escolhido, volta para o primeiro
+  const teamName = teams.some((t) => t.name === teamPick) ? teamPick : teams[0].name
   const team = teams.find((t) => t.name === teamName)
-  const roster = useMemo(() => rosterOf(teamName), [teamName])
-  const current = roster.find((p) => p.nick === selected) ?? roster[0]
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- recalcula quando os dados são trocados
+  const roster = useMemo(() => rosterOf(teamName), [teamName, live.version])
+  const current = roster.find((p) => p.nick === selected) ?? roster.find((p) => p.found && p.recent?.length) ?? roster[0]
   const modalPlayer = modalKey ? players.find((p) => keyOf(p) === modalKey) : null
   const closeModal = useCallback(() => setModalKey(null), [])
 
@@ -52,18 +60,35 @@ export default function App() {
   }, [mode, modalKey, roster, current])
 
   return (
-    <div className={`mx-auto max-w-[1240px] px-4 pt-4 ${mode === 'time' ? 'pb-40' : 'pb-10'}`}>
+    <div className={`mx-auto max-w-[1240px] px-4 pt-4 ${mode === 'time' ? 'pb-40' : 'pb-28'}`}>
       {/* topo */}
       <header className="relative flex flex-wrap items-end justify-between gap-4 border-b border-line pb-4">
         <span className="absolute bottom-[-1px] left-0 h-0.5 w-36 bg-gold" />
         <div>
           <h1 className="font-head text-[clamp(24px,4vw,38px)] leading-none tracking-wider text-gold2">
-            COPA AMÉRICA
-            <span className="mt-1 block text-[0.42em] tracking-[0.4em] text-gold">DEADLOCK PREMIER</span>
+            DEADLOCK SCOUT
+            <span className="mt-1 block text-[0.42em] tracking-[0.4em] text-gold">CARTAS · NOTAS · CONFRONTOS</span>
           </h1>
-          <p className="mt-2 text-sm text-muted">
-            14 e 15 de novembro · 8 nações · stats ranked via DeadChaps · coletado em {new Date(updatedAt).toLocaleDateString('pt-BR')}
-          </p>
+          <p className="mt-2 text-sm text-muted">Copa América (14 e 15 de novembro) e times profissionais · stats ranked via DeadChaps e EDL.gg</p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+            <span title="Data da última coleta dos dados no DeadChaps e no EDL.gg">
+              Dados de {new Date(updatedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+            </span>
+            <button
+              onClick={live.refresh}
+              aria-label="Atualizar dados"
+              className="rounded-sm border border-gold/50 px-2 py-0.5 font-bold tracking-wider text-gold2 hover:border-gold hover:bg-gold/10"
+            >
+              {live.status === 'loading' ? '↻ Atualizando…' : '↻ Atualizar'}
+            </button>
+            <span role="status" className={live.status === 'erro' ? 'text-neg' : ''}>
+              {live.status === 'ok' && 'Dados atualizados ✓'}
+              {live.status === 'same' && 'Já está na versão mais recente ✓'}
+              {live.status === 'erro' && 'Não foi possível atualizar agora'}
+              {live.status === 'idle' && `Atualiza sozinho a cada ${REFRESH_MS / 3600000} h`}
+              {(live.status === 'ok' || live.status === 'same') && live.checkedAt && ` · verificado às ${new Date(live.checkedAt).toLocaleTimeString('pt-BR', { timeStyle: 'short' })}`}
+            </span>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -71,6 +96,7 @@ export default function App() {
             {[
               ['time', 'Cartinhas'],
               ['comparar', 'Comparar times'],
+              ['partidas', 'Torneios'],
             ].map(([id, label]) => (
               <button
                 key={id}
@@ -104,6 +130,10 @@ export default function App() {
             onOpen={(p) => setModalKey(keyOf(p))}
           />
         </main>
+      ) : mode === 'partidas' ? (
+        <main className="mt-5">
+          <MatchesView onOpenProfile={(p) => setModalKey(keyOf(p))} />
+        </main>
       ) : (
         <>
           <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Grupo de times">
@@ -132,7 +162,7 @@ export default function App() {
             )}
           </div>
 
-          <nav className="mt-2 flex gap-2 overflow-x-auto pb-1" aria-label="Times">
+          <nav className="mt-3 flex gap-2 overflow-x-auto pt-2 pb-1" aria-label="Times">
             {groupTeams.map((t) => {
               const { avg } = teamStats(rosterOf(t.name), grades, includeSubs)
               const active = t.name === teamName
@@ -141,13 +171,15 @@ export default function App() {
                   key={t.name}
                   onClick={() => pickTeam(t.name)}
                   style={{ '--tier': tierOf(avg)?.color ?? '#6b5a2e' }}
-                  className={`flex min-w-[132px] flex-1 items-center gap-2 rounded-sm border border-b-2 border-b-(--tier) px-3 py-2 text-left font-bold tracking-wide uppercase transition ${
+                  className={`relative flex min-w-[130px] flex-1 items-center gap-2 rounded-sm border border-b-2 border-b-(--tier) px-3 py-2 text-left font-bold tracking-wide uppercase transition ${
                     active ? 'border-gold bg-gradient-to-b from-[#2a2417] to-panel' : 'border-line bg-panel hover:border-gold/60'
                   }`}
                 >
                   <img src={t.flag} alt="" className={`h-[18px] w-[26px] rounded-sm ${t.group === 'EDL' ? 'object-contain' : 'object-cover'}`} />
-                  <span className="flex-1 text-sm">{t.name}</span>
-                  <em className="text-(--tier) not-italic">{avg != null ? avg.toFixed(1) : '–'}</em>
+                  <span className="min-w-0 flex-1 truncate text-sm">{t.name}</span>
+                  <em className="absolute -top-2 right-1.5 rounded-sm border border-(--tier) bg-bg px-1 text-[11px] leading-4 font-bold text-(--tier) not-italic tabular-nums">
+                    {avg != null ? (avg >= 100 ? '100' : avg.toFixed(1)) : '–'}
+                  </em>
                 </button>
               )
             })}
@@ -155,10 +187,12 @@ export default function App() {
 
           <main className="mt-3 grid items-start gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
             <div className="grid gap-4 lg:sticky lg:top-4">
-              <TradingCard key={keyOf(current)} player={current} team={team} grade={grades[keyOf(current)]} />
-              <GradeInput value={grades[keyOf(current)]} onChange={(v) => setGrade(keyOf(current), v)} savedAt={savedAt} />
+              <TradingCard key={keyOf(current)} player={current} team={team} grade={grades[keyOf(current)]} attrs={attrs} />
             </div>
-            <Details key={keyOf(current)} player={current} grade={grades[keyOf(current)]} />
+            <div className="grid min-w-0 gap-4">
+              <GradeInput value={grades[keyOf(current)]} onChange={(v) => setGrade(keyOf(current), v)} savedAt={savedAt} />
+              <Details key={keyOf(current)} player={current} grade={grades[keyOf(current)]} />
+            </div>
           </main>
 
           {/* barra fixa: companheiros + média do time */}
@@ -184,12 +218,13 @@ export default function App() {
 
       <footer className="mt-8 border-t border-line pt-3 text-xs text-muted">
         Lista de jogadores: deadlockpremier.com/copa-america · Stats: deadchaps.gg · Cenário competitivo: edl.gg. Perfis são associados pelo nick e podem estar errados
-        (veja a etiqueta de confiança e use “Abrir tracker” para conferir). Notas ficam salvas só neste navegador. Projeto de fã, sem
-        afiliação com a Valve.
+        (veja a etiqueta de confiança e use “Abrir tracker” para conferir). Notas ficam salvas só neste navegador. Deadlock Scout é um projeto de fã, sem
+        afiliação com a Valve nem com o Deadlock Premier.
       </footer>
 
       {modalPlayer && (
         <PlayerModal
+          attrs={attrs}
           player={modalPlayer}
           grade={grades[keyOf(modalPlayer)]}
           onGrade={(v) => setGrade(keyOf(modalPlayer), v)}

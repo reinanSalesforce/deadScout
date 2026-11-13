@@ -1,0 +1,47 @@
+name: Partidas ao vivo (a cada 5 min)
+
+# Coleta as partidas da Copa América publicadas no deadlockpremier.com e guarda matches.json na branch
+# `live-data` (branch só com esse arquivo). O site lê esse arquivo via raw.githubusercontent.com (CORS liberado)
+# e se atualiza sozinho, SEM novo deploy. Só há commit quando as partidas mudam.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-matches
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Coletar partidas
+        run: node scripts/fetch-matches.mjs
+      - name: Publicar na branch live-data
+        run: |
+          cp public/data/matches.json "$RUNNER_TEMP/matches.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin live-data >/dev/null 2>&1; then
+            git fetch origin live-data
+            git checkout -B live-data origin/live-data
+          else
+            git checkout --orphan live-data
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+          cp "$RUNNER_TEMP/matches.json" matches.json
+          git add matches.json
+          if git diff --cached --quiet; then
+            echo "Sem mudanças nas partidas."
+          else
+            git commit -m "Partidas atualizadas"
+            git push origin live-data
+          fi

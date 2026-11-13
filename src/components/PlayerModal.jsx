@@ -5,7 +5,7 @@ import Details from './Details'
 import { keyOf, teams } from '../lib'
 
 // Pop-up com o perfil completo: aparece por cima da tela atual (ex.: comparativo) sem sair dela.
-export default function PlayerModal({ player: p, grade, onGrade, savedAt, onClose }) {
+export default function PlayerModal({ player: p, grade, onGrade, savedAt, attrs, onClose }) {
   const team = teams.find((t) => t.name === p.team)
 
   useEffect(() => {
@@ -37,10 +37,12 @@ export default function PlayerModal({ player: p, grade, onGrade, savedAt, onClos
         </button>
         <div className="grid gap-5 pt-10 lg:grid-cols-[360px_1fr]">
           <div className="grid content-start gap-4">
-            <TradingCard player={p} team={team} grade={grade} />
-            <GradeInput value={grade} onChange={onGrade} savedAt={savedAt} />
+            <TradingCard player={p} team={team} grade={grade} attrs={attrs} />
           </div>
-          <Details player={p} grade={grade} />
+          <div className="grid min-w-0 content-start gap-4">
+            <GradeInput value={grade} onChange={onGrade} savedAt={savedAt} />
+            <Details player={p} grade={grade} />
+          </div>
         </div>
       </div>
     </div>

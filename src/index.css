@@ -50,6 +50,57 @@
   .bevel {
     clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px);
   }
+  /* silhueta da carta (topo chanfrado, base em ponta), como a carta de FUT */
+  .shield {
+    clip-path: polygon(9% 0, 91% 0, 100% 4.5%, 100% 84%, 50% 100%, 0 84%, 0 4.5%);
+  }
+  /* inclinação 3D da carta + brilho holográfico (desligados com "reduzir movimento") */
+  .fut {
+    transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+    transition: transform 0.15s ease-out;
+    will-change: transform;
+  }
+  .fut-shine {
+    opacity: 0;
+    mix-blend-mode: screen;
+    background:
+      radial-gradient(circle at var(--mx, 50%) var(--my, 30%), rgba(255, 255, 255, 0.28), transparent 38%),
+      linear-gradient(115deg, transparent 30%, color-mix(in srgb, var(--tier) 35%, transparent) 48%, transparent 66%);
+    transition: opacity 0.2s;
+  }
+  .fut:hover .fut-shine {
+    opacity: var(--shine, 0);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fut {
+      transform: none !important;
+      transition: none;
+    }
+    .fut-shine {
+      display: none;
+    }
+  }
+  .attr-input {
+    width: 2.6rem;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px dashed transparent;
+    padding: 0;
+    text-align: right;
+    font: inherit;
+    color: inherit;
+    -moz-appearance: textfield;
+  }
+  .attr-input:hover,
+  .attr-input:focus {
+    border-bottom-color: currentColor;
+    outline: none;
+  }
+  .attr-input::-webkit-inner-spin-button,
+  .attr-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
   .panel {
     @apply rounded-sm border border-line bg-panel;
   }

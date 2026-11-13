@@ -1,6 +1,25 @@
-import raw from './data/players.json'
+import bundled from './data/players.json'
 
-export const { teams, ranks, players, updatedAt } = raw
+// Dados dos jogadores: começam com o arquivo empacotado no build e podem ser trocados em tempo de
+// execução (botão "Atualizar" / a cada 1 hora) por setData(). Exportados como "live bindings".
+export let teams, ranks, players, updatedAt
+let withStats = []
+
+const isData = (d) =>
+  !!d && Array.isArray(d.players) && d.players.length > 0 && Array.isArray(d.teams) && d.teams.length > 0 && !!d.ranks && typeof d.updatedAt === 'string'
+
+function apply(raw) {
+  ;({ teams, ranks, players, updatedAt } = raw)
+  withStats = players.filter((p) => p.stats && p.wins != null)
+}
+apply(bundled)
+
+// troca os dados se o arquivo for válido; devolve true/false
+export function setData(raw) {
+  if (!isData(raw)) return false
+  apply(raw)
+  return true
+}
 
 export const keyOf = (p) => `${p.team}:${p.nick}`
 
@@ -54,7 +73,6 @@ const AXES = [
   { label: 'OBJ', get: (p) => p.stats.objDmg },
   { label: 'WIN%', get: (p) => (p.wins / Math.max(1, p.wins + p.losses)) * 100 },
 ]
-const withStats = players.filter((p) => p.stats && p.wins != null)
 // percentil dentro do mesmo grupo (Copa x Copa, pro x pro)
 const pct = (axis, v, group) => {
   const vals = withStats.filter((p) => groupOfTeam(p.team) === group).map(axis.get)
@@ -64,6 +82,37 @@ export const radarOf = (p) => {
   if (!p.stats || p.wins == null) return null
   const g = groupOfTeam(p.team)
   return AXES.map((a) => ({ label: a.label, value: pct(a, a.get(p), g) }))
+}
+
+// ---- Atributos da carta (estilo FUT): 6 notas de 1 a 99 derivadas dos stats reais, editáveis pelo usuário
+export const ATTRS = [
+  { k: 'KDA', desc: 'Abates + assistências por morte', w: 0.2, get: (p) => kdaOf(p.stats) },
+  { k: 'DMG', desc: 'Dano em heróis por jogo', w: 0.2, get: (p) => p.stats.heroDmg },
+  { k: 'SOU', desc: 'Souls por jogo', w: 0.15, get: (p) => p.stats.souls },
+  { k: 'AIM', desc: 'Precisão de tiro', w: 0.15, get: (p) => p.stats.accuracy },
+  { k: 'OBJ', desc: 'Dano em objetivos', w: 0.1, get: (p) => p.stats.objDmg },
+  { k: 'WIN', desc: 'Taxa de vitória em ranked', w: 0.2, get: (p) => (p.wins / Math.max(1, p.wins + p.losses)) * 100 },
+]
+
+// nota calculada: percentil no mesmo grupo mapeado para 45..99; vazio quando não há stats
+export const baseAttrs = (p) => {
+  if (!p.stats || p.wins == null) return {}
+  const g = groupOfTeam(p.team)
+  return Object.fromEntries(ATTRS.map((a) => [a.k, Math.round(45 + pct(a, a.get(p), g) * 54)]))
+}
+
+// valores finais: edição do usuário tem prioridade sobre o calculado
+export const attrValues = (p, overrides = {}) => {
+  const base = baseAttrs(p)
+  return Object.fromEntries(ATTRS.map((a) => [a.k, overrides?.[a.k] ?? base[a.k] ?? null]))
+}
+
+// nota geral: média ponderada dos atributos disponíveis (pesos renormalizados)
+export const ovrOf = (values) => {
+  const have = ATTRS.filter((a) => values[a.k] != null)
+  if (!have.length) return null
+  const w = have.reduce((s, a) => s + a.w, 0)
+  return Math.round(have.reduce((s, a) => s + values[a.k] * a.w, 0) / w)
 }
 
 export const fmt = (n, d = 1) => (n == null ? '–' : Number(n).toFixed(d))

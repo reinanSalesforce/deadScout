@@ -74,7 +74,7 @@ function Row({ p, grade, onGrade, onOpen }) {
 }
 
 function Column({ side, teamName, setTeamName, other, grades, setGrade, includeSubs, onOpen }) {
-  const team = teams.find((t) => t.name === teamName)
+  const team = teams.find((t) => t.name === teamName) ?? teams[0]
   const roster = rosterOf(teamName)
   return (
     <section className="grid min-w-0 content-start gap-3">
@@ -158,7 +158,7 @@ export default function CompareView({ grades, setGrade, includeSubs, onToggleSub
         <Column side="B" teamName={b} setTeamName={setB} other={a} grades={grades} setGrade={setGrade} includeSubs={includeSubs} onOpen={onOpen} />
       </div>
 
-      <div className="sticky bottom-2 z-10 grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-sm border border-gold bg-bg/95 px-3 py-2 text-center shadow-xl backdrop-blur sm:gap-8 sm:px-4 sm:py-3">
+      <div className="sticky bottom-2 z-10 -mx-1 grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-sm border border-gold bg-bg/95 px-3 py-2 text-center shadow-xl backdrop-blur sm:gap-8 sm:px-4 sm:py-3">
         <Score name={a} avg={sa.avg} win={leader === a} />
         <div className="min-w-24 sm:min-w-32">
           <div className="font-head text-[10px] tracking-[0.2em] text-gold sm:text-[11px]">DIFERENÇA</div>

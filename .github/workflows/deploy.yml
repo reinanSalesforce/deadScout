@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call: # chamado pelo refresh.yml (atualização de dados a cada hora)
 
 permissions:
   contents: read
@@ -24,7 +25,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # testes rodam com os dados versionados no repositório (estáveis)
       - run: npm test
+      # partidas da Copa (usadas também como cadastro oficial de contas); se falhar, segue sem elas
+      - name: Atualizar partidas
+        run: node scripts/fetch-matches.mjs || echo "Partidas indisponíveis agora"
+      # dados novos do DeadChaps e do EDL.gg; se as APIs falharem, mantém os dados do repositório
+      - name: Atualizar dados dos jogadores
+        run: node scripts/fetch-data.mjs || echo "Coleta falhou, usando os dados do repositório"
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

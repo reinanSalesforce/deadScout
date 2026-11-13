@@ -1,6 +1,14 @@
 // Coleta stats reais do DeadChaps (API pública usada pelo próprio site) para todos os jogadores da Copa América.
 // Uso: node scripts/fetch-data.mjs
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs'
+
+// Cadastro OFICIAL do torneio: as partidas do deadlockpremier.com informam a conta Steam de cada jogador
+// registrado (nick + seleção). Quando existir (public/data/matches.json), vale mais que a busca por nick.
+const AUTH = new Map()
+try {
+  const m = JSON.parse(readFileSync('public/data/matches.json', 'utf8'))
+  for (const g of m.games ?? []) for (const t of g.teams) for (const p of t.players) if (p.registered && p.nation) AUTH.set(`${p.nation}:${p.name.toLowerCase()}`, p.account)
+} catch {}
 
 const BASE = 'https://www.deadchaps.gg/api'
 const HEADERS = { 'User-Agent': 'Mozilla/5.0 (copa-america-cards)' }
@@ -84,7 +92,7 @@ const get = async (path) => {
 
 const heroesRaw = (await get('/deadlock/heroes/slim')) ?? []
 const heroes = Object.fromEntries(
-  heroesRaw.map((h) => [h.id, { name: h.name, icon: h.images?.icon_image_small_webp ?? h.images?.icon_image_small ?? null, art: h.images?.top_bar_vertical_image_webp ?? h.images?.icon_hero_card_webp ?? null }]),
+  heroesRaw.map((h) => [h.id, { name: h.name, icon: h.images?.icon_image_small_webp ?? h.images?.icon_image_small ?? null, art: h.images?.top_bar_vertical_image_webp ?? h.images?.icon_hero_card_webp ?? null, card: h.images?.icon_hero_card_webp ?? null, color: h.color ?? null }]),
 )
 const ranksRaw = (await get('/deadlock/ranks')) ?? []
 const ranks = Object.fromEntries(
@@ -112,7 +120,14 @@ async function build(team, entry) {
       (b.badge ?? 0) - (a.badge ?? 0) ||
       b.ranked_games - a.ranked_games,
   )
-  const pick = pool[0] ?? cands[0] ?? (r ? { steam_id: r.steam_id, username: r.username } : null)
+  // conta oficial do torneio (se houver e o perfil existir no DeadChaps)
+  let authPick = null
+  const authId = AUTH.get(`${team}:${nick.toLowerCase()}`)
+  if (authId) {
+    const prof = await get(`/player/${authId}`)
+    if (prof?.player) authPick = { steam_id: String(authId), username: prof.player.username, avatar_url: prof.player.avatar, badge: prof.player.rank ?? 0 }
+  }
+  const pick = authPick ?? pool[0] ?? cands[0] ?? (r ? { steam_id: r.steam_id, username: r.username } : null)
   if (!pick) return rec
   const id = pick.steam_id
   const [p, s, h, m] = await Promise.all([
@@ -150,6 +165,7 @@ async function build(team, entry) {
   // confiança do match: exato e único / exato com vários homônimos / aproximado
   rec.match = exact.length === 1 && pick === exact[0] && exact[0].ranked_games >= 10 ? 'alta' : pool.length ? 'media' : 'baixa'
   if (ALIAS[nick]) rec.match = 'media'
+  if (authPick) rec.match = 'alta' // confirmado pelo cadastro oficial do torneio
   rec.alts = cands.filter((c) => c.steam_id !== id).slice(0, 3).map((c) => ({ id: c.steam_id, name: c.username, games: c.ranked_games }))
   if (s && s.games) {
     rec.stats = {
@@ -178,6 +194,8 @@ async function build(team, entry) {
       name: heroes[x.hero_id]?.name ?? `#${x.hero_id}`,
       icon: heroes[x.hero_id]?.icon ?? null,
       art: heroes[x.hero_id]?.art ?? null,
+      card: heroes[x.hero_id]?.card ?? null,
+      color: heroes[x.hero_id]?.color ?? null,
       games: x.games,
       wins: x.wins,
       winRate: x.win_rate,
@@ -189,9 +207,9 @@ async function build(team, entry) {
 
 const jobs = Object.entries(TEAMS).flatMap(([team, t]) => t.players.map((p) => [team, p]))
 const players = []
-for (let i = 0; i < jobs.length; i += 6) {
-  players.push(...(await Promise.all(jobs.slice(i, i + 6).map(([t, p]) => build(t, p)))))
-  console.log(`${Math.min(i + 6, jobs.length)}/${jobs.length}`)
+for (let i = 0; i < jobs.length; i += 10) {
+  players.push(...(await Promise.all(jobs.slice(i, i + 10).map(([t, p]) => build(t, p)))))
+  console.log(`${Math.min(i + 10, jobs.length)}/${jobs.length}`)
 }
 
 // ---- EDL.GG: cenário competitivo (prêmios, títulos, MVPs, séries). API JSON usada pelo próprio site.
@@ -237,10 +255,19 @@ const teams = Object.entries(TEAMS).map(([name, t]) => {
   const { players: _p, ...meta } = t
   return { name, ...meta }
 })
-mkdirSync('src/data', { recursive: true })
-writeFileSync(
-  'src/data/players.json',
-  JSON.stringify({ updatedAt: new Date().toISOString(), teams, ranks, players }, null, 1),
-)
+// trava de segurança: se as APIs estiverem fora do ar, NÃO sobrescreve os dados bons que já existem
+const okCount = players.filter((p) => p.found).length
+if (okCount < players.length * 0.6 || Object.keys(ranks).length === 0) {
+  console.error(`Coleta incompleta (${okCount}/${players.length} perfis). Dados anteriores mantidos.`)
+  process.exit(1)
+}
+
+// src/data = versão empacotada no build (carga inicial e testes); public/data = arquivo que o site
+// rebusca ao vivo (botão "Atualizar" e a cada 1 h) sem precisar de novo build.
+const json = JSON.stringify({ updatedAt: new Date().toISOString(), teams, ranks, players })
+for (const dir of ['src/data', 'public/data']) {
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(`${dir}/players.json`, json)
+}
 console.log('ok:', players.filter((p) => p.found).length, 'encontrados de', players.length)
 console.log('não encontrados:', players.filter((p) => !p.found).map((p) => p.nick).join(', '))
